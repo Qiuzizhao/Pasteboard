@@ -566,9 +566,10 @@
 
   function startPolling() {
     setInterval(poll, POLL_MS);
+    setInterval(refreshHistory, 10000); // 历史记录跨设备同步（含其他设备的删除操作）
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) flushSave();
-      else poll();
+      else { poll(); refreshHistory(); }
     });
     window.addEventListener('focus', poll);
     window.addEventListener('pagehide', flushSave);
@@ -603,6 +604,7 @@
       if (!dirty) {
         applyClipboard(data);
         setStatus('ok', '已同步 · ' + fmtTime(data.updated_at));
+        refreshHistory(); // 其他设备写入新内容时，同步刷新历史列表
       } else {
         pendingRemote = data;
         $('banner').classList.add('show');
@@ -851,6 +853,7 @@
 
   // ---- 历史记录 ----
   async function refreshHistory() {
+    if (document.hidden) return; // 后台标签页不重复请求
     try {
       const data = await api('/api/history');
       const list = data.items || [];
