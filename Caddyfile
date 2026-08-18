@@ -1,5 +1,21 @@
 # Caddy 自动 HTTPS 反向代理
 # 变量来自 docker-compose.yml 的 environment
+#
+# 双监听方案：
+#   http:// 块  → 80 端口直接提供服务（兼容 Cloudflare Flexible/Off 模式回源走 HTTP）
+#   https 块    → 443 端口 TLS（Full 模式 / DNS-only 直连时使用）
+# 这样无论 Cloudflare 处于哪种加密模式，站点都能正常工作。
+
+http://{$CLIPBOARD_DOMAIN} {
+	encode zstd gzip
+
+	basic_auth {
+		{$CLIPBOARD_BASIC_AUTH_USER} {$CLIPBOARD_BASIC_AUTH_HASH}
+	}
+
+	reverse_proxy app:8000
+}
+
 {$CLIPBOARD_DOMAIN} {
 	encode zstd gzip
 
