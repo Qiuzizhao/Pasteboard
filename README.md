@@ -3,9 +3,9 @@
 一个人用、多端访问的极简网页剪贴板：在一个页面里粘贴/输入文字，自动同步到服务器，其他设备打开同一个网址即可查看、复制。带历史记录，每条可一键复制。
 
 - **后端**：Node.js 零依赖（`app/server.js`），数据存 SQLite 都不用，就一个 JSON 文件，原子写入
-- **前端**：单页 `app/static/index.html`，无框架，深色主题，手机电脑通用
-- **部署**：Docker Compose 一键起两个容器 —— 应用 + Caddy（自动 HTTPS、基础认证）
-- **安全**：两层防护 —— Caddy 的 HTTP Basic 认证（浏览器友好）+ 应用级令牌 `X-Clipboard-Token`
+- **前端**：单页 `app/static/index.html`，无框架，亮色主题，手机电脑通用
+- **部署**：Docker Compose 一键起两个容器 —— 应用 + Caddy（自动 HTTPS）
+- **安全**：应用级令牌 `X-Clipboard-Token` 保护全部 API，前端页面内输入一次即可（不用 HTTP Basic Auth，移动端兼容性最好）
 
 ## 项目结构
 
@@ -16,7 +16,7 @@ Pasteboard/
 │   └── static/index.html  # 前端单页（HTML+CSS+JS 全内联）
 ├── Dockerfile
 ├── docker-compose.yml     # app + caddy 两个服务
-├── Caddyfile              # HTTPS 反向代理 + Basic 认证
+├── Caddyfile              # HTTPS 反向代理
 ├── .env.example           # 配置模板（复制为 .env 使用）
 └── README.md
 ```
@@ -40,20 +40,12 @@ cp .env.example .env
 vim .env
 ```
 
-需要填三个值：
+需要填两个值：
 
 | 变量 | 说明 |
 |---|---|
 | `CLIPBOARD_DOMAIN` | 你的域名，如 `clip.example.com` |
 | `CLIPBOARD_TOKEN` | 应用访问令牌。生成方式：`openssl rand -hex 32` |
-| `CLIPBOARD_BASIC_AUTH_HASH` | Caddy 登录密码的 bcrypt 哈希，见下 |
-
-生成 Basic 认证密码哈希：
-
-```bash
-docker run --rm caddy:2 caddy hash-password --plaintext '你的登录密码'
-# 输出类似 $2a$14$xxxxxxxx...，整段粘贴到 .env 的 CLIPBOARD_BASIC_AUTH_HASH
-```
 
 ### 3. 启动
 
@@ -72,9 +64,8 @@ docker compose logs -f caddy   # 看到 "certificate obtained" 即成功
 
 然后浏览器打开 **https://你的域名**：
 
-1. 第一次会弹浏览器基础认证框 → 输入 `CLIPBOARD_BASIC_AUTH_USER`（默认 admin）和密码
-2. 页面再弹「输入访问密钥」→ 粘贴 `CLIPBOARD_TOKEN`（每个浏览器只需输入一次，存在 localStorage）
-3. 开始使用：粘贴/输入文字自动保存，其他设备打开同一网址即可看到并复制
+1. 页面弹出「输入访问密钥」→ 粘贴 `CLIPBOARD_TOKEN`（每个浏览器只需输入一次，存在 localStorage）
+2. 开始使用：粘贴/输入文字自动保存，其他设备打开同一网址即可看到并复制
 
 ## 使用说明
 
@@ -97,7 +88,7 @@ CLIPBOARD_TOKEN=随便一个测试令牌 node app/server.js
 
 ## 安全与备份
 
-- **两层认证**：Caddy Basic 认证只保护页面本身（浏览器首次访问询问一次）；`/api/*` 由应用令牌（`X-Clipboard-Token`）保护。这样设计是为了避免移动端浏览器对 XHR/fetch 的 401 响应反复弹出登录框
+- **认证**：全部 API 由应用令牌（`X-Clipboard-Token`）保护，前端页面内输入一次、存浏览器本地。刻意不使用 HTTP Basic Auth —— 移动端浏览器（尤其 iOS Safari）对 Basic Auth 的 XHR 401 会反复弹登录框，令牌方案在各端表现一致
 - **明文存储警告**：历史记录以明文保存在服务器的 `data/state.json` 里。**不要**长期存放密码、密钥等敏感信息；服务器磁盘被攻破时这些内容会暴露
 - **备份**：备份 `data/` 目录即可（就一个 JSON 文件）。升级前建议先 `docker compose cp app:/data/state.json ./state.json.bak`
 - **防火墙**：服务器只需开放 80/443 端口
@@ -105,5 +96,4 @@ CLIPBOARD_TOKEN=随便一个测试令牌 node app/server.js
 ## 常见问题
 
 - **修改 .env 后如何生效**：`docker compose up -d` 会重建配置；改了 `CLIPBOARD_TOKEN` 后所有已登录的浏览器会收到 401，重新输入新令牌即可
-- **想去掉 Caddy Basic 认证**：删除 Caddyfile 里两个 `basic_auth { ... }` 块，并把 compose 中 `CLIPBOARD_BASIC_AUTH_HASH` 的 `:?` 校验删掉，`up -d` 重建
 - **想改历史条数上限**：给 app 服务加环境变量 `CLIPBOARD_HISTORY_LIMIT=500`

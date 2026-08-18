@@ -476,7 +476,7 @@
     hideLogin();
     init();
   };
-  $('tokenCancel').onclick = () => { if (!token) location.reload(); hideLogin(); };
+  $('tokenCancel').onclick = () => { if (token) hideLogin(); };
   $('tokenInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('tokenOk').click(); });
 
   // ---- 视图切换（文字 / 图片） ----

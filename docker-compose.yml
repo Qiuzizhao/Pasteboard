@@ -24,8 +24,6 @@ services:
       - "443:443"
     environment:
       - CLIPBOARD_DOMAIN=${CLIPBOARD_DOMAIN:?请在 .env 中设置 CLIPBOARD_DOMAIN（你的域名）}
-      - CLIPBOARD_BASIC_AUTH_USER=${CLIPBOARD_BASIC_AUTH_USER:-admin}
-      - CLIPBOARD_BASIC_AUTH_HASH=${CLIPBOARD_BASIC_AUTH_HASH:?请在 .env 中设置 CLIPBOARD_BASIC_AUTH_HASH（caddy hash-password 生成）}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
