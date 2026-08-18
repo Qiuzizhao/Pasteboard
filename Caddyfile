@@ -1,0 +1,15 @@
+# Caddy 自动 HTTPS 反向代理
+# 变量来自 docker-compose.yml 的 environment
+{$CLIPBOARD_DOMAIN} {
+	encode zstd gzip
+
+	# 第一层：浏览器基础认证（Caddy 原生）
+	# 密码哈希生成方式见 README，或执行：
+	#   docker run --rm caddy:2 caddy hash-password --plaintext '你的密码'
+	basic_auth {
+		{$CLIPBOARD_BASIC_AUTH_USER} {$CLIPBOARD_BASIC_AUTH_HASH}
+	}
+
+	# 第二层：应用内令牌（X-Clipboard-Token），由前端登录弹窗处理
+	reverse_proxy app:8000
+}

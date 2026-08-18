@@ -1,0 +1,8 @@
+{
+  "name": "pasteboard-deploy",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "ssh2": "^1.16.0"
+  }
+}

@@ -1,0 +1,16 @@
+# 数据（剪贴板 + 历史）
+data/
+.testdata/
+
+# 环境变量（含密钥，绝不能提交）
+.env
+deploy/.env.deploy
+
+# Node（部署脚本依赖）
+node_modules/
+deploy/node_modules/
+deploy/.npm-cache/
+
+# 其他
+*.log
+.DS_Store
