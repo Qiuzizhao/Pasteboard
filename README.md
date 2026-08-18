@@ -97,7 +97,7 @@ CLIPBOARD_TOKEN=随便一个测试令牌 node app/server.js
 
 ## 安全与备份
 
-- **两层认证**：Caddy Basic 认证挡在 HTTPS 入口；应用令牌是第二层，即使 Basic 被绕过（或你以后去掉 Basic）也读不了数据
+- **两层认证**：Caddy Basic 认证只保护页面本身（浏览器首次访问询问一次）；`/api/*` 由应用令牌（`X-Clipboard-Token`）保护。这样设计是为了避免移动端浏览器对 XHR/fetch 的 401 响应反复弹出登录框
 - **明文存储警告**：历史记录以明文保存在服务器的 `data/state.json` 里。**不要**长期存放密码、密钥等敏感信息；服务器磁盘被攻破时这些内容会暴露
 - **备份**：备份 `data/` 目录即可（就一个 JSON 文件）。升级前建议先 `docker compose cp app:/data/state.json ./state.json.bak`
 - **防火墙**：服务器只需开放 80/443 端口
@@ -105,5 +105,5 @@ CLIPBOARD_TOKEN=随便一个测试令牌 node app/server.js
 ## 常见问题
 
 - **修改 .env 后如何生效**：`docker compose up -d` 会重建配置；改了 `CLIPBOARD_TOKEN` 后所有已登录的浏览器会收到 401，重新输入新令牌即可
-- **想去掉 Caddy Basic 认证**：删除 Caddyfile 里 `basic_auth { ... }` 块，并把 compose 中 `CLIPBOARD_BASIC_AUTH_HASH` 的 `:?` 校验删掉，`up -d` 重建
+- **想去掉 Caddy Basic 认证**：删除 Caddyfile 里两个 `basic_auth { ... }` 块，并把 compose 中 `CLIPBOARD_BASIC_AUTH_HASH` 的 `:?` 校验删掉，`up -d` 重建
 - **想改历史条数上限**：给 app 服务加环境变量 `CLIPBOARD_HISTORY_LIMIT=500`

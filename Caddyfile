@@ -1,31 +1,44 @@
 # Caddy 自动 HTTPS 反向代理
 # 变量来自 docker-compose.yml 的 environment
 #
-# 双监听方案：
-#   http:// 块  → 80 端口直接提供服务（兼容 Cloudflare Flexible/Off 模式回源走 HTTP）
-#   https 块    → 443 端口 TLS（Full 模式 / DNS-only 直连时使用）
-# 这样无论 Cloudflare 处于哪种加密模式，站点都能正常工作。
+# 结构说明：
+#   - /api/* 由应用令牌（X-Clipboard-Token）保护，不再套 Basic Auth，
+#     避免移动端浏览器对 XHR 401 反复弹窗
+#   - 页面（/）由 Caddy Basic Auth 保护，浏览器只在首次访问时询问一次
+#   - http:// 块 → 80 端口（兼容 Cloudflare Flexible/Off 模式回源走 HTTP）
+#   - https 块   → 443 端口 TLS（Full 模式 / DNS-only 直连）
 
 http://{$CLIPBOARD_DOMAIN} {
 	encode zstd gzip
 
-	basic_auth {
-		{$CLIPBOARD_BASIC_AUTH_USER} {$CLIPBOARD_BASIC_AUTH_HASH}
+	handle /api/* {
+		reverse_proxy app:8000
 	}
 
-	reverse_proxy app:8000
+	handle {
+		basic_auth {
+			{$CLIPBOARD_BASIC_AUTH_USER} {$CLIPBOARD_BASIC_AUTH_HASH}
+		}
+		reverse_proxy app:8000
+	}
 }
 
 {$CLIPBOARD_DOMAIN} {
 	encode zstd gzip
 
-	# 第一层：浏览器基础认证（Caddy 原生）
-	# 密码哈希生成方式见 README，或执行：
-	#   docker run --rm caddy:2 caddy hash-password --plaintext '你的密码'
-	basic_auth {
-		{$CLIPBOARD_BASIC_AUTH_USER} {$CLIPBOARD_BASIC_AUTH_HASH}
+	handle /api/* {
+		reverse_proxy app:8000
 	}
 
-	# 第二层：应用内令牌（X-Clipboard-Token），由前端登录弹窗处理
-	reverse_proxy app:8000
+	handle {
+		# 第一层：浏览器基础认证（Caddy 原生），只保护页面本身
+		# 密码哈希生成方式见 README，或执行：
+		#   docker run --rm caddy:2 caddy hash-password --plaintext '你的密码'
+		basic_auth {
+			{$CLIPBOARD_BASIC_AUTH_USER} {$CLIPBOARD_BASIC_AUTH_HASH}
+		}
+
+		# 第二层：应用内令牌（X-Clipboard-Token）保护 /api/*，由前端登录弹窗处理
+		reverse_proxy app:8000
+	}
 }
