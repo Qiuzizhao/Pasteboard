@@ -3,7 +3,7 @@
 /**
  * Pasteboard — 个人网页剪贴板后端（Node.js 零依赖）
  * 支持文字与图片：
- *   文字/元数据 → state.json；图片文件 → data/images/ 目录
+ *   文字/元数据 → state.json（异步合并写入）；图片文件 → data/images/ 目录（内存 LRU 缓存）
  *
  * 环境变量：
  *   CLIPBOARD_TOKEN      访问令牌（必填，多设备共用同一令牌）
@@ -25,6 +25,8 @@ const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const IMAGES_DIR = path.join(DATA_DIR, 'images');
 const MAX_TEXT_BODY = 1024 * 1024;        // 文字请求 1 MB
 const MAX_IMAGE_BODY = 12 * 1024 * 1024;  // 图片上传 12 MB
+const SAVE_DEBOUNCE_MS = 250;             // state.json 异步合并写入间隔
+const IMAGE_CACHE_MAX_BYTES = 64 * 1024 * 1024; // 图片内存缓存上限 64MB
 
 const MIME_EXT = {
   'image/png': 'png',
@@ -34,7 +36,7 @@ const MIME_EXT = {
 };
 
 // ---------------------------------------------------------------------------
-// 存储：state.json + images/ 目录
+// 存储：state.json（异步写入）+ images/ 目录（LRU 缓存）
 // ---------------------------------------------------------------------------
 
 let state = {
@@ -78,20 +80,83 @@ function loadState() {
   }
 }
 
-function saveState() {
+// 同步写入（启动 GC、退出前落盘用）
+function saveStateSync() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   const tmp = STATE_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(state), 'utf8');
-  fs.renameSync(tmp, STATE_FILE); // 原子替换，避免写一半损坏
+  fs.renameSync(tmp, STATE_FILE);
 }
 
-// 删除图片文件 + 元数据
+// 异步合并写入：快速连续变更只落盘一次，避免每次请求同步阻塞
+let saveTimer = null;
+let saveBusy = false;
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS);
+}
+function flushSave() {
+  if (saveBusy) { clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS); return; }
+  saveBusy = true;
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const tmp = STATE_FILE + '.tmp';
+  const data = JSON.stringify(state);
+  fs.writeFile(tmp, data, 'utf8', (err) => {
+    if (err) { saveBusy = false; return; }
+    fs.rename(tmp, STATE_FILE, () => { saveBusy = false; });
+  });
+}
+
+process.on('SIGTERM', () => {
+  clearTimeout(saveTimer);
+  saveStateSync();
+  process.exit(0);
+});
+process.on('SIGINT', () => {
+  clearTimeout(saveTimer);
+  saveStateSync();
+  process.exit(0);
+});
+
+// ---------------------------------------------------------------------------
+// 图片：文件 + 内存 LRU 缓存
+// ---------------------------------------------------------------------------
+
+const imageCache = new Map(); // image_id -> Buffer
+let imageCacheBytes = 0;
+
+function getImageFile(imageId, info) {
+  const hit = imageCache.get(imageId);
+  if (hit) {
+    imageCache.delete(imageId); // 刷新最近使用
+    imageCache.set(imageId, hit);
+    return hit;
+  }
+  const fp = path.join(IMAGES_DIR, imageId + '.' + (MIME_EXT[info.mime] || 'bin'));
+  const buf = fs.readFileSync(fp); // 文件不存在会抛错
+  imageCache.set(imageId, buf);
+  imageCacheBytes += buf.length;
+  while (imageCacheBytes > IMAGE_CACHE_MAX_BYTES && imageCache.size > 1) {
+    const oldestKey = imageCache.keys().next().value;
+    imageCacheBytes -= imageCache.get(oldestKey).length;
+    imageCache.delete(oldestKey);
+  }
+  return buf;
+}
+
+function dropImageCache(imageId) {
+  const buf = imageCache.get(imageId);
+  if (buf) { imageCacheBytes -= buf.length; imageCache.delete(imageId); }
+}
+
+// 删除图片文件 + 元数据 + 缓存
 function deleteImageFile(imageId) {
   const info = state.images && state.images[imageId];
   if (!info) return;
   try {
     fs.unlinkSync(path.join(IMAGES_DIR, imageId + '.' + (MIME_EXT[info.mime] || 'bin')));
   } catch (_) { /* 文件可能已不存在 */ }
+  dropImageCache(imageId);
   delete state.images[imageId];
 }
 
@@ -112,6 +177,7 @@ function gcImages() {
       try {
         fs.unlinkSync(path.join(IMAGES_DIR, id + '.' + (MIME_EXT[info.mime] || 'bin')));
       } catch (_) { /* 忽略 */ }
+      dropImageCache(id);
       delete state.images[id];
       changed = true;
     }
@@ -123,13 +189,15 @@ function gcImages() {
 // HTTP 工具
 // ---------------------------------------------------------------------------
 
-function sendJson(res, status, obj) {
+function sendJson(res, status, obj, etag) {
   const body = JSON.stringify(obj);
-  res.writeHead(status, {
+  const headers = {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
     'Cache-Control': 'no-store',
-  });
+  };
+  if (etag) headers.ETag = etag;
+  res.writeHead(status, headers);
   res.end(body);
 }
 
@@ -180,15 +248,21 @@ async function handleApi(req, res, url) {
     return sendJson(res, 401, { error: 'unauthorized' });
   }
 
-  // 获取当前剪贴板
+  // 获取当前剪贴板（支持 ETag 条件请求，无变化返回 304）
   if (req.method === 'GET' && url.pathname === '/api/clipboard') {
+    const etag = '"v' + state.version + '"';
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-store' });
+      res.end();
+      return;
+    }
     return sendJson(res, 200, {
       type: state.clipboard.type,
       content: state.clipboard.content,
       image_id: state.clipboard.image_id,
       version: state.version,
       updated_at: state.updated_at,
-    });
+    }, etag);
   }
 
   // 设置当前剪贴板（写入历史）
@@ -233,7 +307,7 @@ async function handleApi(req, res, url) {
     if (state.history.length > HISTORY_LIMIT) {
       state.history.length = HISTORY_LIMIT; // 超限图片文件由下次启动时的 gcImages 清理
     }
-    saveState();
+    scheduleSave();
     return sendJson(res, 200, {
       type, content, image_id: imageId,
       version: state.version, updated_at: now,
@@ -261,19 +335,18 @@ async function handleApi(req, res, url) {
     fs.writeFileSync(path.join(IMAGES_DIR, id + '.' + ext), buf);
     state.images = state.images || {};
     state.images[id] = { mime: ctype, size: buf.length };
-    saveState();
+    scheduleSave();
     return sendJson(res, 200, { id, mime: ctype, size: buf.length });
   }
 
-  // 读取图片
+  // 读取图片（走内存 LRU 缓存）
   const imgMatch = url.pathname.match(/^\/api\/images\/([A-Za-z0-9-]+)$/);
   if (req.method === 'GET' && imgMatch) {
     const id = imgMatch[1];
     const info = state.images && state.images[id];
     if (!info) return sendJson(res, 404, { error: 'not found' });
-    const ext = MIME_EXT[info.mime];
     try {
-      const data = fs.readFileSync(path.join(IMAGES_DIR, id + '.' + ext));
+      const data = getImageFile(id, info);
       res.writeHead(200, {
         'Content-Type': info.mime,
         'Content-Length': data.length,
@@ -308,7 +381,7 @@ async function handleApi(req, res, url) {
       }
     }
     state.history = [];
-    saveState();
+    scheduleSave();
     return sendJson(res, 200, { ok: true });
   }
 
@@ -322,7 +395,7 @@ async function handleApi(req, res, url) {
         !(state.clipboard.type === 'image' && state.clipboard.image_id === item.image_id)) {
       deleteImageFile(item.image_id);
     }
-    saveState();
+    scheduleSave();
     return sendJson(res, 200, { ok: true });
   }
 
@@ -355,7 +428,7 @@ function serveStatic(res, pathname) {
     const ext = path.extname(filePath).toLowerCase();
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600',
     });
     res.end(data);
   });
@@ -387,7 +460,7 @@ if (!fs.existsSync(path.join(STATIC_DIR, 'index.html'))) {
 }
 
 loadState();
-if (gcImages()) saveState(); // 清理孤儿图片并持久化
+if (gcImages()) saveStateSync(); // 清理孤儿图片并持久化
 server.listen(PORT, () => {
   console.log(`Pasteboard 已启动: http://0.0.0.0:${PORT}`);
   console.log(`数据目录: ${DATA_DIR}`);

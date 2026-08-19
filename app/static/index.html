@@ -4,8 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f3f5f9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>网页剪贴板</title>
 <link rel="icon" href="data:,">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <style>
   :root {
     --bg: #f3f5f9;
@@ -116,7 +120,7 @@
     min-height: 180px;
     display: flex; align-items: center; justify-content: center;
   }
-  .image-frame img { max-width: 100%; max-height: 340px; border-radius: 8px; display: block; }
+  .image-frame img { max-width: 100%; max-height: 340px; border-radius: 8px; display: block; cursor: zoom-in; }
   .image-meta { color: var(--muted); font-size: 12px; text-align: center; font-variant-numeric: tabular-nums; }
   .meta { display: flex; justify-content: space-between; align-items: center; margin: 10px 2px 0; color: var(--muted); font-size: 13px; flex-wrap: wrap; gap: 8px; }
 
@@ -173,10 +177,21 @@
   .banner button:hover { background: var(--warn); color: #fff; }
 
   /* ---- 历史记录 ---- */
-  .sec-title { display: flex; justify-content: space-between; align-items: center; margin: 30px 0 14px; }
+  .sec-title { display: flex; justify-content: space-between; align-items: center; margin: 30px 0 14px; gap: 12px; flex-wrap: wrap; }
   .sec-title h2 { font-size: 15px; margin: 0; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .sec-title h2::before { content: ''; width: 4px; height: 16px; border-radius: 2px; background: var(--accent-grad); }
+  .sec-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .count { font-size: 12px; background: var(--panel-solid); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .search-box { position: relative; display: flex; align-items: center; }
+  .search-box svg { position: absolute; left: 11px; pointer-events: none; color: var(--muted); }
+  .search-box input {
+    background: var(--panel-solid); border: 1px solid var(--border);
+    border-radius: 999px; padding: 7px 14px 7px 34px;
+    font-size: 13px; color: var(--text); outline: none; width: 170px;
+    font-family: inherit;
+    transition: border-color .15s, width .2s, box-shadow .15s;
+  }
+  .search-box input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 124, 247, .12); }
   .empty {
     background: var(--panel-solid);
     border: 1px dashed var(--border);
@@ -210,7 +225,7 @@
   .item:hover { border-color: #b9c7e6; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(23, 32, 58, .09); }
   @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   .item pre {
-    margin: 0 0 12px;
+    margin: 0 0 8px;
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 220px;
@@ -218,6 +233,13 @@
     font: 13px/1.7 ui-monospace, "Cascadia Code", Consolas, "Courier New", monospace;
     scrollbar-width: thin;
   }
+  .item pre.clamped { max-height: 10.2em; overflow: hidden; }
+  .expand-btn {
+    display: block; margin: 0 0 10px; padding: 2px 8px;
+    background: none; border: none; color: var(--accent);
+    font-size: 12px; cursor: pointer;
+  }
+  .expand-btn:hover { text-decoration: underline; color: var(--accent-2); }
   .thumb-wrap {
     margin: 0 0 12px;
     cursor: zoom-in;
@@ -235,7 +257,7 @@
   .item .item-meta button.armed,
   .item .item-meta button.armed:hover { background: var(--err); border-color: var(--err); color: #fff; }
 
-  /* ---- 弹窗 ---- */
+  /* ---- 弹窗 / 灯箱 ---- */
   .modal-backdrop {
     position: fixed; inset: 0; background: rgba(23, 32, 58, .45);
     -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
@@ -258,6 +280,22 @@
   .modal input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 124, 247, .15); }
   .modal .btnrow { margin-top: 18px; justify-content: flex-end; }
 
+  .lightbox {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(8, 10, 16, .92);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    cursor: zoom-out;
+  }
+  .lightbox img { max-width: 92vw; max-height: 86vh; border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, .6); }
+  .lightbox-close {
+    position: absolute; top: 16px; right: 16px;
+    width: 42px; height: 42px; border-radius: 50%;
+    background: rgba(255, 255, 255, .12); border: none; color: #fff; font-size: 18px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .lightbox-close:hover { background: rgba(255, 255, 255, .24); }
+
   /* ---- 轻提示 ---- */
   .toast {
     position: fixed; left: 50%; bottom: calc(26px + var(--safe-b));
@@ -269,7 +307,7 @@
     font-size: 14px; box-shadow: var(--shadow-lg);
     opacity: 0; pointer-events: none;
     transition: opacity .25s, transform .25s;
-    z-index: 100;
+    z-index: 300;
     max-width: 86vw;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
@@ -291,7 +329,10 @@
     #actions button { grid-column: 1 / -1; min-height: 44px; font-size: 15px; padding: 8px 6px; } /* 触控目标 ≥ 44px */
     .item { padding: 12px 14px; }
     .item .item-meta button { min-height: 40px; padding: 6px 14px; }
-    .sec-title h2 { font-size: 14px; }
+    .sec-title { flex-direction: column; align-items: stretch; }
+    .sec-actions { justify-content: space-between; }
+    .search-box { flex: 1; }
+    .search-box input { width: 100%; }
     .image-frame img { max-height: 260px; }
   }
 </style>
@@ -362,22 +403,33 @@
     </div>
     <div class="tip">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      在页面任意位置按 Ctrl+V 可直接粘贴文字或图片，自动保存并同步到其他设备
+      <span id="tipText">在页面任意位置按 Ctrl+V 可直接粘贴文字或图片，自动保存并同步到其他设备</span>
     </div>
   </section>
 
   <div class="sec-title">
     <h2>历史记录 <span class="count" id="histCount"></span></h2>
-    <button id="clearHistBtn" class="danger">
-      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-      清空历史
-    </button>
+    <div class="sec-actions">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="searchInput" type="search" placeholder="搜索历史" autocomplete="off">
+      </div>
+      <button id="clearHistBtn" class="danger">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        清空历史
+      </button>
+    </div>
   </div>
   <div id="history"></div>
 
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lightbox-close" id="lightboxClose" aria-label="关闭">✕</button>
+  <img id="lightboxImg" alt="查看大图">
+</div>
 
 <div class="modal-backdrop" id="loginModal">
   <div class="modal">
@@ -407,8 +459,16 @@
   const TOKEN_KEY = 'pasteboard_token';
   let token = localStorage.getItem(TOKEN_KEY) || '';
 
-  const POLL_MS = 4000;
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && window.innerWidth < 768);
+  $('tipText').textContent = isMobile
+    ? '长按文本框选择「粘贴」，或点「读取系统剪贴板」上传图片/文字'
+    : '在页面任意位置按 Ctrl+V 可直接粘贴文字或图片，自动保存并同步到其他设备';
+
   const SAVE_DEBOUNCE = 800;
+  const POLL_FAST = 4000;
+  const POLL_SLOW = 15000;
+  const IDLE_MS = 120000; // 2 分钟无操作 → 降频
+  const HISTORY_POLL_MS = 10000;
   let lastVersion = -1;
   let dirty = false;
   let pendingRemote = null;
@@ -416,9 +476,21 @@
   let lastSavedText = '';
   let lastSavedAt = null;
 
+  // 自适应轮询
+  let pollMs = POLL_FAST;
+  let pollTimer = null;
+  let historyTimer = null;
+  let idleTimer = null;
+
   // 当前剪贴板图片（主视图）
   let currentImageBlob = null;
   let currentImageUrl = null;
+
+  // 历史记录：完整列表 + 元素 Map + 图片缓存（按 image_id）
+  let historyItems = [];
+  let historyElMap = new Map();
+  const imageCache = new Map(); // image_id -> {url, blob}
+  let searchQuery = '';
 
   const ICON_COPY = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   const ICON_TRASH = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
@@ -454,6 +526,7 @@
       body = JSON.stringify(body);
     }
     const res = await fetch(path, Object.assign({}, options, { headers, body }));
+    if (res.status === 304) return { __notModified: true }; // 条件请求：无变化
     if (res.status === 401) {
       showLogin();
       throw new Error('unauthorized');
@@ -564,16 +637,33 @@
     }
   }
 
+  // ---- 自适应轮询 ----
+  function resetIdle() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => setPollRate(POLL_SLOW), IDLE_MS);
+    if (pollMs !== POLL_FAST) setPollRate(POLL_FAST);
+  }
+
+  function setPollRate(ms) {
+    if (pollMs === ms) return;
+    pollMs = ms;
+    clearInterval(pollTimer);
+    pollTimer = setInterval(poll, pollMs);
+  }
+
   function startPolling() {
-    setInterval(poll, POLL_MS);
-    setInterval(refreshHistory, 10000); // 历史记录跨设备同步（含其他设备的删除操作）
+    pollTimer = setInterval(poll, pollMs);
+    historyTimer = setInterval(() => { if (!document.hidden) refreshHistory(); }, HISTORY_POLL_MS);
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) flushSave();
-      else { poll(); refreshHistory(); }
+      else { resetIdle(); poll(); refreshHistory(); }
     });
-    window.addEventListener('focus', poll);
+    window.addEventListener('focus', () => { resetIdle(); poll(); refreshHistory(); });
     window.addEventListener('pagehide', flushSave);
     window.addEventListener('beforeunload', flushSave);
+    ['input', 'click', 'touchstart', 'keydown'].forEach((ev) =>
+      document.addEventListener(ev, resetIdle, { passive: true })
+    );
   }
 
   // 离开/切换页面前，把防抖等待中的内容强制发出去（keepalive 允许请求在页面关闭后完成）
@@ -599,7 +689,10 @@
   async function poll() {
     if (document.hidden) return;
     try {
-      const data = await api('/api/clipboard');
+      const data = await api('/api/clipboard', {
+        headers: lastVersion >= 0 ? { 'If-None-Match': '"v' + lastVersion + '"' } : {},
+      });
+      if (!data || data.__notModified) return; // 304 无变化
       if (data.version === lastVersion) return;
       if (!dirty) {
         applyClipboard(data);
@@ -620,7 +713,36 @@
     poll(); // 直接以最新服务器状态应用
   };
 
-  // ---- 图片上传与设置 ----
+  // ---- 图片上传（含压缩）与设置 ----
+  async function compressImage(file) {
+    if (!file || !file.type || file.type.indexOf('image/') !== 0) return file;
+    if (file.type === 'image/gif') return file; // 动画 GIF 不压缩
+    try {
+      const bmp = await createImageBitmap(file);
+      const maxSide = 2048;
+      const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+      if (scale === 1 && file.size <= 800 * 1024) { bmp.close(); return file; } // 小图直接用
+      const w = Math.max(1, Math.round(bmp.width * scale));
+      const h = Math.max(1, Math.round(bmp.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bmp, 0, 0, w, h);
+      bmp.close();
+      const hasAlpha = /png|webp/i.test(file.type);
+      const mime = hasAlpha ? 'image/webp' : 'image/jpeg';
+      let blob = await new Promise((res) => canvas.toBlob(res, mime, 0.85));
+      if (!blob && hasAlpha) blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      if (!blob) return file;
+      if (blob.size >= file.size) return file; // 压缩没变小就用原图
+      const base = file.name.replace(/\.[^.]+$/, '');
+      return new File([blob], base + '.' + (mime.split('/')[1]), { type: mime });
+    } catch (_) {
+      return file; // 不支持解码时原图上传
+    }
+  }
+
   async function uploadImage(file) {
     const res = await fetch('/api/images', {
       method: 'POST',
@@ -661,9 +783,11 @@
   }
 
   async function handlePastedImage(file) {
-    setStatus('busy', '上传图片中…');
+    setStatus('busy', '处理图片中…');
     try {
-      const meta = await uploadImage(file);
+      const optimized = await compressImage(file);
+      setStatus('busy', '上传图片中…');
+      const meta = await uploadImage(optimized);
       await setClipboardImage(meta);
     } catch (_) {
       setStatus('err', '图片上传失败');
@@ -710,6 +834,25 @@
     if (!currentImageBlob || !currentImageUrl) { toast('图片尚未加载完成'); return; }
     downloadBlob(currentImageBlob, currentImageUrl);
   };
+
+  clipImg.addEventListener('click', () => {
+    if (currentImageUrl) openLightbox(currentImageUrl);
+  });
+
+  // ---- 灯箱 ----
+  function openLightbox(url) {
+    if (!url) return;
+    $('lightboxImg').src = url;
+    $('lightbox').hidden = false;
+  }
+  function closeLightbox() {
+    $('lightbox').hidden = true;
+    $('lightboxImg').removeAttribute('src');
+  }
+  $('lightbox').addEventListener('click', (e) => {
+    if (e.target === $('lightbox') || e.target.id === 'lightboxClose') closeLightbox();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
 
   // ---- 操作 ----
   clip.addEventListener('input', () => { updateChars(); autoResize(); scheduleSave(); });
@@ -778,7 +921,7 @@
     try {
       if (!navigator.clipboard) throw new Error('unsupported');
 
-      // 优先尝试读取图片
+      // 优先尝试读取图片（读取后压缩上传）
       if (navigator.clipboard.read) {
         const items = await navigator.clipboard.read();
         for (const item of items) {
@@ -787,8 +930,10 @@
           if (imgType) {
             const blob = await item.getType(imgType);
             const file = new File([blob], 'clipboard-image.' + (imgType.split('/')[1] || 'png'), { type: imgType });
+            setStatus('busy', '处理图片中…');
+            const optimized = await compressImage(file);
             setStatus('busy', '上传图片中…');
-            const meta = await uploadImage(file);
+            const meta = await uploadImage(optimized);
             await setClipboardImage(meta);
             return;
           }
@@ -851,127 +996,196 @@
     toast('历史已清空');
   };
 
-  // ---- 历史记录 ----
+  // ---- 历史记录（增量渲染 + 图片缓存） ----
+
+  // 历史图片加载：按 image_id 缓存 objectURL，未变化不重复请求
+  function getCachedImage(imageId, imgEl, cb) {
+    const hit = imageCache.get(imageId);
+    if (hit) {
+      imgEl.src = hit.url;
+      if (cb) cb(hit.blob);
+      return;
+    }
+    fetch('/api/images/' + imageId, { headers: { 'X-Clipboard-Token': token } })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error('http'))))
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        imageCache.set(imageId, { url, blob });
+        imgEl.src = url;
+        if (cb) cb(blob);
+      })
+      .catch(() => { imgEl.alt = '加载失败'; });
+  }
+
+  function buildHistoryItem(it) {
+    const div = document.createElement('div');
+    div.className = 'item';
+    const entry = { el: div, it, url: null, blob: null };
+
+    if (it.type === 'image') {
+      const wrap = document.createElement('div');
+      wrap.className = 'thumb-wrap';
+      wrap.title = '点击查看大图';
+      const img = document.createElement('img');
+      img.className = 'thumb';
+      img.alt = '历史图片';
+      img.loading = 'lazy';
+      wrap.appendChild(img);
+      wrap.onclick = () => openLightbox(img.src);
+      div.appendChild(wrap);
+      getCachedImage(it.image_id, img, (blob) => { entry.blob = blob; entry.url = img.src; });
+    } else {
+      const content = it.content || '（空）';
+      const pre = document.createElement('pre');
+      pre.textContent = content;
+      div.appendChild(pre);
+      if (content.length > 300) {
+        pre.classList.add('clamped');
+        const toggle = document.createElement('button');
+        toggle.className = 'expand-btn';
+        toggle.textContent = '展开全文';
+        toggle.onclick = () => {
+          const open = pre.classList.toggle('clamped');
+          toggle.textContent = open ? '展开全文' : '收起';
+        };
+        div.appendChild(toggle);
+      }
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'item-meta';
+    const info = document.createElement('span');
+    info.className = 'time';
+    info.textContent = fmtTime(it.created_at) + (it.type === 'image' ? ' · 图片' : ' · ' + it.char_count + ' 字符');
+
+    const btns = document.createElement('div');
+    btns.className = 'btnrow';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.innerHTML = it.type === 'image' ? ICON_IMG + '<span>复制图片</span>' : ICON_COPY + '<span>复制</span>';
+    copyBtn.onclick = async () => {
+      if (it.type === 'image') {
+        if (!entry.blob) { toast('图片尚未加载完成'); return; }
+        try {
+          if (await copyImageBlob(entry.blob)) { flash(copyBtn, '已复制 ✓'); return; }
+          throw new Error('unsupported');
+        } catch (_) {
+          const tmpUrl = entry.url || URL.createObjectURL(entry.blob);
+          downloadBlob(entry.blob, tmpUrl);
+          flash(copyBtn, '已下载');
+          toast('当前浏览器不支持复制图片，已改为下载');
+        }
+      } else if (await copyText(it.content)) {
+        flash(copyBtn, '已复制 ✓');
+      }
+    };
+
+    // 历史图片条目提供独立下载按钮
+    const dlBtn = it.type === 'image' ? document.createElement('button') : null;
+    if (dlBtn) {
+      dlBtn.innerHTML = ICON_DL + '<span>下载</span>';
+      dlBtn.onclick = () => {
+        if (!entry.blob) { toast('图片尚未加载完成'); return; }
+        downloadBlob(entry.blob, entry.url || URL.createObjectURL(entry.blob));
+        toast('已开始下载');
+      };
+    }
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'danger';
+    delBtn.innerHTML = ICON_TRASH + '<span>删除</span>';
+    let delTimer = null;
+    delBtn.onclick = async () => {
+      // 二次确认：第一次点击进入"待确认"状态，3 秒内再点一次才真正删除
+      if (delBtn.dataset.armed !== '1') {
+        delBtn.dataset.armed = '1';
+        delBtn.innerHTML = '确认删除？';
+        delBtn.classList.add('armed');
+        clearTimeout(delTimer);
+        delTimer = setTimeout(() => {
+          delete delBtn.dataset.armed;
+          delBtn.innerHTML = ICON_TRASH + '<span>删除</span>';
+          delBtn.classList.remove('armed');
+        }, 3000);
+        return;
+      }
+      clearTimeout(delTimer);
+      await api('/api/history/' + it.id, { method: 'DELETE' });
+      refreshHistory();
+      toast('已删除');
+    };
+    btns.appendChild(copyBtn);
+    if (dlBtn) btns.appendChild(dlBtn);
+    btns.appendChild(delBtn);
+
+    meta.appendChild(info);
+    meta.appendChild(btns);
+    div.appendChild(meta);
+    return entry;
+  }
+
+  // 增量渲染：复用未变化的元素，只增/删/改差异项，保留滚动位置与图片缓存
+  function renderHistory(items) {
+    const box = $('history');
+    const ids = new Set(items.map((it) => it.id));
+
+    // 移除已不存在的条目
+    for (const [id, entry] of historyElMap) {
+      if (!ids.has(id)) entry.el.remove();
+    }
+
+    if (!items.length) {
+      box.innerHTML = searchQuery
+        ? '<div class="empty">🔍 无匹配结果</div>'
+        : '<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">暂无历史记录</div><div class="empty-sub">粘贴或输入内容后自动留档</div></div>';
+      historyElMap = new Map();
+      $('histCount').textContent = '';
+      return;
+    }
+
+    const newMap = new Map();
+    for (const it of items) {
+      const old = historyElMap.get(it.id);
+      const same = old && old.it.type === it.type && old.it.content === it.content &&
+        old.it.image_id === it.image_id && old.it.created_at === it.created_at;
+      if (old && same) {
+        newMap.set(it.id, old);
+        box.appendChild(old.el); // appendChild 移动已存在的节点，保证顺序
+      } else {
+        const entry = buildHistoryItem(it);
+        newMap.set(it.id, entry);
+        box.appendChild(entry.el);
+      }
+    }
+    historyElMap = newMap;
+    $('histCount').textContent = items.length ? '(' + items.length + ')' : '';
+  }
+
+  function applyFilter(items) {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) => it.type === 'text' && it.content && it.content.toLowerCase().indexOf(q) !== -1);
+  }
+
   async function refreshHistory() {
     if (document.hidden) return; // 后台标签页不重复请求
     try {
       const data = await api('/api/history');
-      const list = data.items || [];
-      $('histCount').textContent = list.length ? '(' + list.length + ')' : '';
-      const box = $('history');
-      if (!list.length) {
-        box.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">暂无历史记录</div><div class="empty-sub">粘贴或输入内容后自动留档</div></div>';
-        return;
-      }
-      box.innerHTML = '';
-      for (const it of list) {
-        const div = document.createElement('div');
-        div.className = 'item';
-
-        let itemBlob = null;
-        if (it.type === 'image') {
-          const wrap = document.createElement('div');
-          wrap.className = 'thumb-wrap';
-          wrap.title = '点击查看大图';
-          const img = document.createElement('img');
-          img.className = 'thumb';
-          img.alt = '历史图片';
-          loadHistoryImage(it.image_id, img, (blob) => { itemBlob = blob; });
-          wrap.appendChild(img);
-          wrap.onclick = () => { if (img.src) window.open(img.src); };
-          div.appendChild(wrap);
-        } else {
-          const pre = document.createElement('pre');
-          pre.textContent = it.content || '（空）';
-          div.appendChild(pre);
-        }
-
-        const meta = document.createElement('div');
-        meta.className = 'item-meta';
-        const info = document.createElement('span');
-        info.className = 'time';
-        info.textContent = fmtTime(it.created_at) + (it.type === 'image' ? ' · 图片' : ' · ' + it.char_count + ' 字符');
-
-        const btns = document.createElement('div');
-        btns.className = 'btnrow';
-
-        const copyBtn = document.createElement('button');
-        copyBtn.innerHTML = it.type === 'image' ? ICON_IMG + '<span>复制图片</span>' : ICON_COPY + '<span>复制</span>';
-        copyBtn.onclick = async () => {
-          if (it.type === 'image') {
-            if (!itemBlob) { toast('图片尚未加载完成'); return; }
-            try {
-              if (await copyImageBlob(itemBlob)) { flash(copyBtn, '已复制 ✓'); return; }
-              throw new Error('unsupported');
-            } catch (_) {
-              const tmpUrl = URL.createObjectURL(itemBlob);
-              downloadBlob(itemBlob, tmpUrl);
-              setTimeout(() => URL.revokeObjectURL(tmpUrl), 10000);
-              flash(copyBtn, '已下载');
-              toast('当前浏览器不支持复制图片，已改为下载');
-            }
-          } else if (await copyText(it.content)) {
-            flash(copyBtn, '已复制 ✓');
-          }
-        };
-
-        // 历史图片条目提供独立下载按钮
-        const dlBtn = it.type === 'image' ? document.createElement('button') : null;
-        if (dlBtn) {
-          dlBtn.innerHTML = ICON_DL + '<span>下载</span>';
-          dlBtn.onclick = () => {
-            if (!itemBlob) { toast('图片尚未加载完成'); return; }
-            const tmpUrl = URL.createObjectURL(itemBlob);
-            downloadBlob(itemBlob, tmpUrl);
-            setTimeout(() => URL.revokeObjectURL(tmpUrl), 10000);
-            toast('已开始下载');
-          };
-        }
-
-        const delBtn = document.createElement('button');
-        delBtn.className = 'danger';
-        delBtn.innerHTML = ICON_TRASH + '<span>删除</span>';
-        let delTimer = null;
-        delBtn.onclick = async () => {
-          // 二次确认：第一次点击进入"待确认"状态，3 秒内再点一次才真正删除
-          if (delBtn.dataset.armed !== '1') {
-            delBtn.dataset.armed = '1';
-            delBtn.innerHTML = '确认删除？';
-            delBtn.classList.add('armed');
-            clearTimeout(delTimer);
-            delTimer = setTimeout(() => {
-              delete delBtn.dataset.armed;
-              delBtn.innerHTML = ICON_TRASH + '<span>删除</span>';
-              delBtn.classList.remove('armed');
-            }, 3000);
-            return;
-          }
-          clearTimeout(delTimer);
-          await api('/api/history/' + it.id, { method: 'DELETE' });
-          refreshHistory();
-          toast('已删除');
-        };
-        btns.appendChild(copyBtn);
-        if (dlBtn) btns.appendChild(dlBtn);
-        btns.appendChild(delBtn);
-
-        meta.appendChild(info);
-        meta.appendChild(btns);
-        div.appendChild(meta);
-        box.appendChild(div);
-      }
+      historyItems = data.items || [];
+      renderHistory(applyFilter(historyItems));
     } catch (_) { /* 忽略 */ }
   }
 
-  // 历史图片缩略图（带令牌鉴权的 blob 加载）
-  function loadHistoryImage(imageId, imgEl, cb) {
-    fetch('/api/images/' + imageId, { headers: { 'X-Clipboard-Token': token } })
-      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error('http'))))
-      .then((blob) => {
-        imgEl.src = URL.createObjectURL(blob);
-        if (cb) cb(blob);
-      })
-      .catch(() => { imgEl.alt = '加载失败'; });
+  $('searchInput').addEventListener('input', () => {
+    searchQuery = $('searchInput').value;
+    renderHistory(applyFilter(historyItems));
+  });
+
+  // ---- PWA ----
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
   }
 
   // ---- 启动 ----

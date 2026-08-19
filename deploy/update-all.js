@@ -14,7 +14,13 @@ const FILES = [
   ['Caddyfile', 'Caddyfile'],
   ['docker-compose.yml', 'docker-compose.yml'],
   ['.env.example', '.env.example'],
+  ['app/server.js', 'app/server.js'],
   ['app/static/index.html', 'app/static/index.html'],
+  ['app/static/sw.js', 'app/static/sw.js'],
+  ['app/static/manifest.webmanifest', 'app/static/manifest.webmanifest'],
+  ['app/static/icons/icon-192.png', 'app/static/icons/icon-192.png'],
+  ['app/static/icons/icon-512.png', 'app/static/icons/icon-512.png'],
+  ['app/static/icons/apple-touch-icon.png', 'app/static/icons/apple-touch-icon.png'],
 ];
 
 const conn = new Client();
