@@ -49,8 +49,17 @@ let state = {
 };
 
 function loadState() {
+  let parsed = null;
   try {
-    const parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  } catch (_) {
+    // 主文件损坏/缺失时，尝试用上一次的备份
+    try {
+      parsed = JSON.parse(fs.readFileSync(STATE_FILE + '.bak', 'utf8'));
+    } catch (_2) { /* 无备份，使用默认空状态 */ }
+  }
+  if (!parsed) return;
+  try {
     state.clipboard = parsed.clipboard && typeof parsed.clipboard === 'object'
       ? {
           type: parsed.clipboard.type === 'image' ? 'image' : 'text',
@@ -81,8 +90,17 @@ function loadState() {
 }
 
 // 同步写入（启动 GC、退出前落盘用）
+function backupState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      fs.copyFileSync(STATE_FILE, STATE_FILE + '.bak'); // 保留上一次状态，防止误删后无法恢复
+    }
+  } catch (_) { /* 忽略 */ }
+}
+
 function saveStateSync() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+  backupState();
   const tmp = STATE_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(state), 'utf8');
   fs.renameSync(tmp, STATE_FILE);
@@ -99,6 +117,7 @@ function flushSave() {
   if (saveBusy) { clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, SAVE_DEBOUNCE_MS); return; }
   saveBusy = true;
   fs.mkdirSync(DATA_DIR, { recursive: true });
+  backupState(); // 写入前保留上一次状态（state.json.bak）
   const tmp = STATE_FILE + '.tmp';
   const data = JSON.stringify(state);
   fs.writeFile(tmp, data, 'utf8', (err) => {

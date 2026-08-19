@@ -122,7 +122,14 @@ CLIPBOARD_TOKEN=随便一个测试令牌 node app/server.js
 
 - **认证**：全部 API 由应用令牌（`X-Clipboard-Token`）保护，前端页面内输入一次、存浏览器本地。刻意不使用 HTTP Basic Auth —— 移动端浏览器（尤其 iOS Safari）对 Basic Auth 的 XHR 401 会反复弹登录框，令牌方案在各端表现一致
 - **明文存储警告**：历史记录以明文保存在服务器的 `data/state.json` 里。**不要**长期存放密码、密钥等敏感信息；服务器磁盘被攻破时这些内容会暴露
-- **备份**：备份 `data/` 目录即可（就一个 JSON 文件）。升级前建议先 `docker compose cp app:/data/state.json ./state.json.bak`
+- **备份**：应用每次写入前会自动保留上一次状态到 `data/state.json.bak`。若误删数据，恢复方法：
+  ```bash
+  cd /home/ubuntu/pasteboard
+  docker compose -f docker-compose.nginx.yml stop app
+  cp data/state.json.bak data/state.json   # 用备份覆盖当前（.bak 是最新一次写入前的状态）
+  docker compose -f docker-compose.nginx.yml start app
+  ```
+  注意：`.bak` 只回退一步（上次写入之前），重要内容建议定期手动 `cp data/state.json data/state.json.$(date +%F)`
 - **防火墙**：服务器只需开放 80/443 端口
 
 ## 常见问题

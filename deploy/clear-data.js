@@ -1,7 +1,14 @@
 'use strict';
-// 清空线上剪贴板数据（清空主剪贴板 + 清空历史）
-// 使用方式: PB_AUTH_PASS= PB_TOKEN= node clear-data.js
+// ⚠️ 危险：清空线上剪贴板数据（清空主剪贴板 + 清空全部历史）！
+// 该操作会永久删除所有历史记录，且无法恢复。
+// 使用方式: CONFIRM_CLEAR=yes PB_AUTH_PASS= PB_TOKEN= node clear-data.js
 const https = require('https');
+
+if (process.env.CONFIRM_CLEAR !== 'yes') {
+  console.error('⚠️ 安全确认缺失：此脚本会清空全部历史记录，不可恢复！');
+  console.error('如确认要执行，请设置环境变量 CONFIRM_CLEAR=yes');
+  process.exit(1);
+}
 
 const DOMAIN = process.env.PB_DOMAIN || 'clipboard.qiuzizhao.com';
 const AUTH_PASS = process.env.PB_AUTH_PASS;
