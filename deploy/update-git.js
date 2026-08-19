@@ -37,8 +37,8 @@ conn.on('ready', () => {
     console.log('确认关键文件到位...');
     console.log(await run('cd ' + REMOTE_DIR + ' && ls app/static/ && wc -c app/static/index.html app/static/sw.js'));
 
-    console.log('重建并启动容器...');
-    r = await run('cd ' + REMOTE_DIR + ' && docker compose up -d --build 2>&1', 300000);
+    console.log('重建并启动容器（nginx 前端模式，不占用 80/443）...');
+    r = await run('cd ' + REMOTE_DIR + ' && docker compose -f docker-compose.nginx.yml up -d --build 2>&1', 300000);
     console.log(r.split('\n').filter((l) => /Started|Running|Built|Error|error/i.test(l)).slice(-6).join('\n') || r.slice(-400));
 
     await new Promise((res) => setTimeout(res, 6000));

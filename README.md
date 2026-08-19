@@ -76,6 +76,38 @@ docker compose logs -f caddy   # 看到 "certificate obtained" 即成功
 - **历史记录**：文字与图片都会自动留档（连续相同内容/相同图片去重），最多 200 条，可单条删除或全部清空；图片历史可点击缩略图查看大图，支持复制图片、下载、删除
 - **图片存储**：图片文件存放在服务器 `data/images/` 目录（PNG/JPG/GIF/WebP，单张 ≤ 12MB），删除历史条目时文件一并删除，重启时会自动清理孤儿文件
 
+## 已有 nginx 的服务器怎么部署（不抢占 80/443）
+
+如果服务器上已经用 nginx 托管了其他站点（本服务器即如此），**不要**用默认的 Caddy 方案——Caddy 需要占用 80/443，会和 nginx 冲突。
+
+用 nginx 前端模式：
+
+```bash
+# 1. 用 nginx 版 compose 起应用（只监听 127.0.0.1:8001）
+docker compose -f docker-compose.nginx.yml up -d --build
+
+# 2. 在 nginx 增加站点（/etc/nginx/sites-available/clipboard）
+#    server {
+#        listen 80;
+#        server_name clipboard.你的域名;
+#        client_max_body_size 20m;
+#        location / {
+#            proxy_pass http://127.0.0.1:8001;
+#            proxy_set_header Host $host;
+#            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#            proxy_set_header X-Forwarded-Proto $scheme;
+#        }
+#    }
+
+# 3. 需要 HTTPS 的话用 certbot 签发（不要用 --redirect，会与 Cloudflare 代理产生跳转循环）
+sudo certbot --nginx -d clipboard.你的域名
+```
+
+⚠️ 注意事项（都是踩过的坑）：
+- **不要** `systemctl stop nginx`——服务器上其他站点可能都靠它托管
+- 若站点在 Cloudflare 代理后，**不要**在 nginx 里配 `return 301 https://`（CF Flexible 回源走 80 端口，会 301 循环）；用上面"80 直接服务 + 443 带证书"的双监听写法
+- nginx 1.24（Ubuntu 24.04）不支持 `http2 on;` 指令，用 `listen 443 ssl http2;` 旧语法
+
 ## 本地开发 / 自测（不需要 Docker）
 
 ```bash

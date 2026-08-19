@@ -1,0 +1,20 @@
+# 适用于"服务器已有 nginx 前端"的部署方式（如本仓库部署到已跑 nginx 的机器时）
+# 用法：docker compose -f docker-compose.nginx.yml up -d --build
+# 说明：app 只发布到 127.0.0.1:8001，由 nginx 反代；不占用 80/443
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      - CLIPBOARD_TOKEN=${CLIPBOARD_TOKEN:?请在 .env 中设置 CLIPBOARD_TOKEN}
+      - CLIPBOARD_DATA_DIR=/data
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
