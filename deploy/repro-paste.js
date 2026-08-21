@@ -68,7 +68,7 @@ const pasteHandlers = els['clip'].listeners['paste'] || []; // 全局 paste 挂�
 // 重新加载一次，捕获 document 上的 paste 处理器
 global.document.addEventListener = (ev, fn) => { if (ev === 'paste') global.__pasteHandlers = (global.__pasteHandlers || []).concat(fn); };
 
-async function simulate(target, clipboardText, withImage) {
+async function simulate(target, formats, withImage) {
   global.__pasteHandlers = [];
   els.clip.value = ''; // 每个场景重置输入框
   try { new Function(script)(); } catch (e) { console.log('重载失败:', e.message); }
@@ -77,7 +77,7 @@ async function simulate(target, clipboardText, withImage) {
     clipboardData: {
       items: withImage ? [{ type: 'image/png', getAsFile: () => ({ type: 'image/png', name: 'x.png' }) }] : [],
       files: [],
-      getData: (t) => (t === 'text/plain' ? clipboardText : ''),
+      getData: (t) => (typeof formats === 'string' ? (t === 'text/plain' ? formats : '') : (formats[t] || '')),
     },
     preventDefault() { this._prevented = true; },
   };
@@ -113,4 +113,28 @@ async function simulate(target, clipboardText, withImage) {
   console.log('--- 场景6：剪贴板只有图片 → 应走图片上传 ---');
   r = await simulate(global.document.body, '', true);
   console.log(JSON.stringify(r));
+
+  console.log('--- 场景7：内容结尾带换行符（页面空白处粘贴）---');
+  r = await simulate(global.document.body, '第一行\n第二行\n');
+  console.log('clipValue:', JSON.stringify(r.clipValue), '| 结尾是\\n:', r.clipValue.endsWith('\n'));
+
+  console.log('--- 场景8：内容只有换行符 ---');
+  r = await simulate(global.document.body, '\n\n');
+  console.log('clipValue:', JSON.stringify(r.clipValue), '| 长度:', r.clipValue.length);
+
+  console.log('--- 场景9：单个 URL + 尾随换行 ---');
+  r = await simulate(global.document.body, 'https://example.com\n');
+  console.log('clipValue:', JSON.stringify(r.clipValue));
+
+  console.log('--- 场景10：剪贴板只提供 text/html（带尾随换行）→ 应粘贴 ---');
+  r = await simulate(global.document.body, { 'text/html': '<div>第一行</div><div>第二行</div>\n' });
+  console.log('clipValue:', JSON.stringify(r.clipValue));
+
+  console.log('--- 场景11：只提供 text/html 富文本 → 转纯文本粘贴 ---');
+  r = await simulate(global.document.body, { 'text/html': '<p>链接 <a href="https://example.com">点我</a> 和 <b>粗体</b></p>' });
+  console.log('clipValue:', JSON.stringify(r.clipValue));
+
+  console.log('--- 场景12：同时有 text/plain + text/html → 优先 text/plain ---');
+  r = await simulate(global.document.body, { 'text/plain': '纯文本版本', 'text/html': '<b>HTML版本</b>' });
+  console.log('clipValue:', JSON.stringify(r.clipValue));
 })();
