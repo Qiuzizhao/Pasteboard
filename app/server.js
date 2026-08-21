@@ -50,13 +50,13 @@ let state = {
 
 function loadState() {
   let parsed = null;
-  try {
-    parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-  } catch (_) {
-    // 主文件损坏/缺失时，尝试用上一次的备份
+  // 依次尝试：主文件 → 三代备份（防止误删/误写后无法回退）
+  const candidates = [STATE_FILE, STATE_FILE + '.bak', STATE_FILE + '.bak.1', STATE_FILE + '.bak.2'];
+  for (const f of candidates) {
     try {
-      parsed = JSON.parse(fs.readFileSync(STATE_FILE + '.bak', 'utf8'));
-    } catch (_2) { /* 无备份，使用默认空状态 */ }
+      parsed = JSON.parse(fs.readFileSync(f, 'utf8'));
+      break;
+    } catch (_) { /* 尝试下一份 */ }
   }
   if (!parsed) return;
   try {
@@ -90,11 +90,14 @@ function loadState() {
 }
 
 // 同步写入（启动 GC、退出前落盘用）
+// 多代备份：每次写入前把 state.json 轮转到 .bak，再 .bak → .bak.1 → .bak.2
+// 共保留 3 份历史状态，误删/误写后可回退多步
 function backupState() {
   try {
-    if (fs.existsSync(STATE_FILE)) {
-      fs.copyFileSync(STATE_FILE, STATE_FILE + '.bak'); // 保留上一次状态，防止误删后无法恢复
-    }
+    if (!fs.existsSync(STATE_FILE)) return;
+    try { fs.copyFileSync(STATE_FILE + '.bak.1', STATE_FILE + '.bak.2'); } catch (_) { /* 无更早备份 */ }
+    try { fs.copyFileSync(STATE_FILE + '.bak', STATE_FILE + '.bak.1'); } catch (_) { /* 无上一份 */ }
+    fs.copyFileSync(STATE_FILE, STATE_FILE + '.bak');
   } catch (_) { /* 忽略 */ }
 }
 
