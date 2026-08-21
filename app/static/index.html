@@ -965,7 +965,23 @@
     try {
       if (!navigator.clipboard) throw new Error('unsupported');
 
-      // 优先尝试读取图片（读取后压缩上传）
+      // 先读文本（含链接），避免剪贴板同时有文字+图片时被图片截胡
+      if (navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          clip.value = text;
+          setView('text');
+          updateChars();
+          autoResize();
+          clearTimeout(saveTimer);
+          await doSave(true);
+          setStatus('ok', '已读取系统剪贴板并保存');
+          toast('已读取系统剪贴板');
+          return;
+        }
+      }
+
+      // 没有文字再读图片（读取后压缩上传）
       if (navigator.clipboard.read) {
         const items = await navigator.clipboard.read();
         for (const item of items) {
@@ -983,22 +999,6 @@
           }
         }
       }
-
-      // 没有图片则读取文本
-      if (navigator.clipboard.readText) {
-        const text = await navigator.clipboard.readText();
-        if (text) {
-          clip.value = text;
-          setView('text');
-          updateChars();
-          autoResize();
-          clearTimeout(saveTimer);
-          await doSave(true);
-          setStatus('ok', '已读取系统剪贴板并保存');
-          toast('已读取系统剪贴板');
-          return;
-        }
-      }
       throw new Error('empty');
     } catch (_) {
       flash(btn, '读取失败');
@@ -1006,22 +1006,16 @@
     }
   };
 
-  // 在页面任意位置粘贴：图片或文字直接作为剪贴板内容保存
+  // 在页面任意位置粘贴：文字或图片直接作为剪贴板内容保存
   document.addEventListener('paste', (e) => {
     const t = e.target;
     if (t && t.id === 'tokenInput') return; // 密钥输入框保留默认行为
 
-    const imgFile = getImageFromPaste(e);
-    if (imgFile) {
-      e.preventDefault();
-      handlePastedImage(imgFile);
-      return;
-    }
-
-    if (t === clip) return; // 文字粘贴进输入框用默认插入行为
-
-    const text = e.clipboardData && e.clipboardData.getData('text/plain');
+    // 先取文本（含链接/URI），避免剪贴板同时含文字+图片时被图片截胡
+    const cd = e.clipboardData;
+    const text = cd && (cd.getData('text/plain') || cd.getData('text/uri-list'));
     if (text) {
+      if (t === clip) return; // 文字粘贴进输入框用默认插入行为
       e.preventDefault();
       clip.value = text;
       updateChars();
@@ -1030,6 +1024,15 @@
       doSave(true);
       setStatus('ok', '已直接粘贴并保存');
       toast('已粘贴并保存');
+      return;
+    }
+
+    // 没有文字才当作图片处理
+    const imgFile = getImageFromPaste(e);
+    if (imgFile) {
+      e.preventDefault();
+      handlePastedImage(imgFile);
+      return;
     }
   });
 
